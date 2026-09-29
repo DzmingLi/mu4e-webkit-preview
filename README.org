@@ -1,0 +1,75 @@
+#+title: mu4e-webkit-preview
+
+Read HTML mail in an embedded [[https://github.com/akirakyle/emacs-webkit][emacs-webkit]] buffer, with native mu4e
+marking commands.  Requires Emacs 29.1+, mu4e 1.14+, and emacs-webkit's
+native module.  EWM is not required.  This is not the built-in xwidget browser.
+
+Status: experimental.  See [[file:DEPENDENCY-NOTES.org][dependency and memory notes]] for the tested
+native build, local compatibility patches and unresolved resource leaks.
+
+* Setup
+
+Add this directory to ~load-path~, then enable automatic HTML previews:
+
+#+begin_src emacs-lisp
+(require 'mu4e-webkit-preview)
+(mu4e-webkit-preview-mode 1)
+#+end_src
+
+Plain-text messages keep mu4e's native rendering.  To preview manually, call
+~M-x mu4e-webkit-preview-open~ in a visible graphical mu4e message view.
+
+The included ~default.nix~ accepts ~emacsPackages~ and an ~emacs-webkit~
+derivation as ~webkit~.  GTK/WebKit build patches belong to that dependency.
+
+* Controls
+
+| Key | Action |
+|-----+--------|
+| d   | Mark for Trash |
+| r   | Mark for refile/archive |
+| x   | Execute pending marks with mu4e's normal confirmation |
+| q   | Close preview and native view, return to headers |
+
+Customize ~mu4e-webkit-preview-mail-mode-map~ to change bindings.  For example:
+
+#+begin_src emacs-lisp
+(keymap-set mu4e-webkit-preview-mail-mode-map "a" #'mu4e-webkit-preview-refile)
+#+end_src
+
+WebKit's scrolling and navigation bindings remain available.  Use ~i~ to
+enter webpage input mode and ~C-g~ to return to Emacs commands.  Links that
+request another window navigate the same preview, retaining its mail actions.
+
+* Lifetime and integration
+
+The browser owns its hidden native mu4e view and exported HTML directory.
+Quitting either buffer closes the pair.  Moving, trashing, refiling or deleting
+the previewed message closes the pair after confirmation and before dispatching
+the server action, preventing asynchronous updates from reopening old mail.
+Flag changes keep the normal mu4e refresh behavior.  Commands validate the
+source message identity before applying marks.
+
+~mu4e-webkit-preview-created-functions~ receives the source buffer, browser
+buffer and view window.  ~mu4e-webkit-preview-close-hook~ runs in the browser
+before cleanup.  Optional attachment UIs can use these hooks; the package
+does not depend on any particular attachment pane or window manager.
+
+Disabling ~mu4e-webkit-preview-mode~ closes its active previews and removes
+the automatic rendering hook.  HTML is rendered with WebKit's normal network
+behavior, including remote images; there is no mail-specific content filter.
+
+* License
+
+GPL-3.0-or-later.
+
+* Tests
+
+Run ~nix flake check~ using the pinned Nixpkgs input, or with mu4e on load-path:
+
+#+begin_src sh
+emacs --batch -L . -l tests/mu4e-webkit-preview-test.el -f ert-run-tests-batch-and-exit
+#+end_src
+
+The tests use the real mu4e update and mark-execution logic with a stub GTK
+renderer.  They do not delete actual mail or verify native memory reclamation.

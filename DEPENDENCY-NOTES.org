@@ -1,0 +1,60 @@
+#+title: WebKit dependency and memory limitations
+
+* Tested dependency
+
+The author's Nix setup uses [[https://github.com/akirakyle/emacs-webkit/tree/4c5caa8e2c2baa09400d3c4a467d4799d735d388][akirakyle/emacs-webkit at 4c5caa8]] with local
+patches.  These patches are in the author's NixOS configuration, not in this
+Elisp package.  Installing this package does not patch your WebKit module.
+
+The local build changes the pkg-config dependency from webkit2gtk-4.0 to
+webkit2gtk-4.1; puts writable state under XDG_STATE_HOME; skips directory
+creation during batch compilation; defers Org link registration until ol is
+loaded; and excludes optional files needing unrelated dependencies.
+
+For PGTK, the local module accepts an optional third argument to
+~webkit--new~ specifying the selected frame's GTK pointer.  Its matching
+~webkit.el~ passes that pointer so embedded views do not depend on GTK focus
+at the time of creation.  Stock emacs-webkit can fail to create a preview
+when no suitable Emacs GTK window has focus.  Keep the module and its Lisp
+interface from the same build.
+
+Two additional local changes select ~WEBKIT_CACHE_MODEL_DOCUMENT_VIEWER~
+and expose ~webkit--terminate-web-process~.  The former reduces caching;
+the latter is an available API, not an automatic recycling policy.
+This preview package does not call it.
+
+* What this package releases
+
+Closing a preview kills its hidden native mu4e view and browser buffer,
+removes its registry entry, and deletes its exported HTML directory.
+The browser buffer's kill hook invokes emacs-webkit's cleanup.  Mail updates
+cannot revive a dismissed native reader.  These behaviors are covered by
+the regression suite.
+
+* What is not guaranteed
+
+There is no memory cap, periodic Web process restart, or native leak-free
+guarantee.  The regression suite replaces the GTK renderer and does not
+measure native memory or long-running RSS.  Browser cache, native heap,
+WebKit subprocesses and Emacs Lisp garbage collection have different lifetimes.
+
+Static inspection of the pinned [[https://github.com/akirakyle/emacs-webkit/blob/4c5caa8e2c2baa09400d3c4a467d4799d735d388/webkit-module.c][native module]] found these unresolved resource
+ownership issues, which the local patches above do not repair:
+
+- The constructor creates a WebKitWebContext without releasing its owned
+  reference after passing it to the WebView.
+- The WebView receives both ~g_object_ref~ and ~g_object_ref_sink~, while
+  its finalizer contains one unref.  This leaves an extra owned reference.
+- The descriptor returned by Emacs ~open_channel~ has no matching ~close~.
+- Some constructor failure paths return after allocating resources without
+  unwinding them.
+
+For an embedded view, ~webkit--destroy~ clears the container pointer;
+widget destruction and an unref happen later in the user-pointer finalizer.
+Closing a buffer therefore does not establish immediate native reclamation.
+These are source-level findings, not a measured leak rate.  A native fix
+needs its own ownership review and repeated create/load/destroy tests in a
+separate Emacs process, including failed construction and pending callbacks.
+
+[[https://webkitgtk.org/reference/webkit2gtk/stable/enum.CacheModel.html][WebKit's cache model documentation]] explains the cache reduction;
+[[https://docs.gtk.org/gobject/method.Object.ref_sink.html][GObject's reference-sinking documentation]] describes the ownership semantics.
