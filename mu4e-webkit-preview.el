@@ -168,7 +168,10 @@ Interactively, use the message in the current mu4e view buffer."
          (headers (mu4e-get-headers-buffer))
          (directory (make-temp-file "mu4e-webkit-preview-" t))
          (file (expand-file-name "index.html" directory))
-         (coding-system-for-write 'utf-8-unix)
+         ;; MIME decoding returns Unicode, but mail HTML need not contain a
+         ;; charset declaration.  A BOM also overrides stale declarations
+         ;; referring to the original MIME bytes rather than this export.
+         (coding-system-for-write 'utf-8-with-signature-unix)
          (webkit-own-window nil)
          preview)
     (condition-case err

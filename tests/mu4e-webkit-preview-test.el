@@ -29,7 +29,7 @@
                             (setq-local webkit--id 99))
                           (switch-to-buffer buffer))))
                      ((symbol-function 'mu4e-view-message-html)
-                      (lambda (_) "<html><body>Resolved mail</body></html>")))
+                      (lambda (_) "<html><body>中文邮件</body></html>")))
              (with-current-buffer headers
                (setq major-mode 'mu4e-headers-mode)
                (setq-local mu4e--mark-map (make-hash-table))
@@ -48,6 +48,19 @@
              ,@body)
          (dolist (buffer (list preview source headers))
            (when (buffer-live-p buffer) (kill-buffer buffer)))))))
+
+(ert-deftest mu4e-webkit-preview-export-declares-utf8-without-html-meta ()
+  (mu4e-webkit-test--with-preview
+    (let ((file (expand-file-name "index.html" export-directory)))
+      (with-temp-buffer
+        (set-buffer-multibyte nil)
+        (insert-file-contents-literally file)
+        (should (string-prefix-p (unibyte-string #xef #xbb #xbf)
+                                 (buffer-string))))
+      (with-temp-buffer
+        (insert-file-contents file)
+        (should (equal (buffer-string)
+                       "<html><body>中文邮件</body></html>"))))))
 
 (defun mu4e-webkit-test--delayed-move (headers message)
   "Replay the real mu4e move update handler without modifying a mail index."
@@ -139,7 +152,7 @@
   (mu4e-webkit-test--with-preview
     (with-temp-buffer
       (insert-file-contents (expand-file-name "index.html" export-directory))
-      (should (equal (buffer-string) "<html><body>Resolved mail</body></html>")))
+      (should (equal (buffer-string) "<html><body>中文邮件</body></html>")))
     (let (followed)
       (cl-letf (((symbol-function 'webkit--load-uri)
                  (lambda (id uri) (setq followed (list id uri)))))
